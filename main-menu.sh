@@ -1,12 +1,14 @@
 #!/bin/bash
+#TODO: Future enhancement: Provide variables to use for environments and menu items for easier maintainance. 
 #functions
 #draw menus
 draw-main-menu(){
     echo "1) Refresh aliases"
     echo "2) Site Migration"
     echo "3) UUID"
-    echo "4) Help"
-    echo "5) Quit"
+    echo "4) Global Nav"
+    echo "5) Help"
+    echo "6) Quit"
 }
 draw-site-menu(){
     echo "1) Prod to Test"
@@ -31,6 +33,7 @@ draw-uuid-menu(){
     #$1 is $SOURCEALIAS
     #$2 is usually environment
     #$3 is usually command
+    #Change the argument in the function scripts section for the corresponding environment if needed.
 site-search(){
     read -r -p "Enter the site name to search for: " SITENAME
     echo ""
@@ -42,16 +45,34 @@ site-search(){
     echo ""
     echo "Copy the site alias between the @ and the environment (.01dev2) for the desired site"
     echo ""
-    read -p "Was the site you were looking for found?  Y/N  " -n 1 -r SITEFOUND
+    read -r -p "Was the site you were looking for found?  Y/N  "  -n 1 SITEFOUND
     echo ""
     if [[ ! $SITEFOUND =~ ^[Yy]$ ]]
     then
-        exit 1
+        read -r -p "Try a different search?  Y/N  " -n 1 TRYAGAIN
+        if [[ ! $TRYAGAIN =~ ^[Yy]$ ]]
+        then
+            exit
+        else
+            echo ""
+            echo ""
+            site-search
+        fi
     fi
+    read -r -p "Enter the copied site alias: " SOURCEALIAS;
+}
+select-environment(){
+    read -r -p "Prod (live) or Test? " ENV
+    case $ENV in
+        live|test)
+        echo "Environment: $ENV"
+        echo "" ;;
+        *)
+        echo "invalid environment"
+        exit 1 ;;
+    esac
 }
 files-download(){
-    #$1 reflects the $SOURCEALIAS variable.
-    #$2 reflects the environment.  Change the argument in the function scripts seciton for the corresponding environment if needed.
     echo ""
     echo "==================================================="
     echo "Copying files from @$1.01$2 to /tmp/$1/files" 
@@ -131,6 +152,11 @@ clear-cache(){
     drush @$1.01$2 cr
     echo ""
 }
+reset-aquarium-globalbar(){
+    drush @$1.01$2 pmu aquarium_citywide_globalbar
+    drush @$1.01$2 config-delete aquarium_citywide_globalbar.settings
+    drush @$1.01$2 en aquarium_citywide_globalbar
+}
 #Main Script Functions
 refresh(){
     echo "==================================================="
@@ -149,8 +175,6 @@ refresh(){
     find ./drush/sites -type f -exec sed -i "s/ssh: { options: '-p 22' }/ssh: { options: '-p 22', tty: 0 }/g" {} +
 }
 prod-download(){
-    site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS;
     files-download $SOURCEALIAS 'live';
     acsf-modules $SOURCEALIAS 'live' 'Uninstalling' 'pmu';
     database-download $SOURCEALIAS 'live';
@@ -158,8 +182,6 @@ prod-download(){
     acsf-error $SOURCEALIAS;
 }
 test-upload(){
-    site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS
     database-drop $SOURCEALIAS 'test';
     database-upload $SOURCEALIAS 'test';
     files-upload $SOURCEALIAS 'test';
@@ -171,8 +193,6 @@ test-upload(){
     clear-cache $SOURCEALIAS 'test';    
 }
 test-download(){
-    site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS;
     files-download $SOURCEALIAS 'test';
     acsf-modules $SOURCEALIAS 'test' 'Uninstalling' 'pmu';
     database-download $SOURCEALIAS 'test';
@@ -180,8 +200,6 @@ test-download(){
     acsf-error $SOURCEALIAS;
 }
 prod-upload(){
-    site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS
     database-drop $SOURCEALIAS 'live';
     database-upload $SOURCEALIAS 'live';
     files-upload $SOURCEALIAS 'live';
@@ -190,8 +208,7 @@ prod-upload(){
     acsf-modules $SOURCEALIAS 'live' 'Uninstalling' 'pmu';
     acsf-modules $SOURCEALIAS 'live' 'Enabling' 'en';
     cron-run $SOURCEALIAS 'live';
-    clear-cache $SOURCEALIAS 'live';    
-
+    clear-cache $SOURCEALIAS 'live';
 }
 #Helper for All in One scripts
 check-refresh(){
@@ -204,20 +221,18 @@ check-refresh(){
 }
 #All in One scripts
 prod-to-test(){
-    check-refresh;
     prod-download;
     test-upload;
 }
 test-to-prod(){
-    check-refresh;
     test-download;
     prod-upload;
 }
 #TODO: Minify uuid scripts.  
 #TODO: Store first view-uuid as old-uuid.
+
 view-uuid(){
     site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS
     echo "PROD"
     PRODuuid=$(drush @$SOURCEALIAS.01live config-get "system.site" uuid) 
     PRODuuid=$(echo "$PRODuuid" | sed 's/^.\{20\}//')
@@ -245,9 +260,9 @@ view-uuid(){
         echo "UUID matches"
     fi
 }
+
 generate-uuid(){
     site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS
     read -r -p "Prod (live) or Test? " ENV
     case $ENV in
         live|test)
@@ -259,9 +274,10 @@ generate-uuid(){
         exit 1 ;;
     esac
 }
+
 set-uuid(){
     site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS
+    # read -r -p "Enter the copied site alias: " SOURCEALIAS
     echo ""
     read -r -p "Enter the generated UUID: " NEWuuid
     echo ""
@@ -279,7 +295,7 @@ set-uuid(){
 }
 uuid-aio(){
     site-search;
-    read -r -p "Enter the copied site alias: " SOURCEALIAS  
+    # read -r -p "Enter the copied site alias: " SOURCEALIAS  
     echo "==================================================="
     echo "Checking UUIDs"
     echo "==================================================="
@@ -382,26 +398,34 @@ site-migration-menu(){
     do
         case $opt in
             "Prod to Test")
+                check-refresh;
+                site-search;
                 prod-to-test;
                 draw-site-menu;
                 ;;
             "Test to Prod")
+                check-refresh;
+                site-search;
                 test-to-prod;
                 draw-site-menu;
                 ;;
             "Prod environment download")
+                site-search;
                 prod-download;
                 draw-site-menu;
                 ;;
             "Test environment upload")
+                site-search;
                 test-upload;
                 draw-site-menu;
                 ;;
             "Test environment download")
+                site-search;
                 test-download;
                 draw-site-menu;
                 ;;
             "Prod environment upload")
+                site-search;
                 prod-upload;
                 draw-site-menu;
                 ;;
@@ -440,6 +464,8 @@ uuid-menu(){
                 draw-uuid-menu;
                 ;;
             "View UUID")
+                site-search
+                
                 view-uuid;
                 draw-uuid-menu;
                 ;;
@@ -480,7 +506,7 @@ reset-menu(){
 
 #main operation
 PS3='Please enter your choice: '
-options=("Refresh aliases" "Site Migration" "UUID" "Help" "Quit")
+options=("Refresh aliases" "Site Migration" "UUID" "Global Nav" "Help" "Quit")
 select opt in "${options[@]}"
 do
     case $opt in
@@ -500,13 +526,20 @@ do
             uuid-menu;
             reset-menu;
             ;;
+        "Global Nav")
+            site-search
+            select-environment
+            reset-aquarium-globalbar $SOURCEALIAS $ENV
+            reset-menu;
+            ;;
         "Help")
             echo ""
             echo "1) Refresh Aliases - Regenerate drush site aliases."
             echo "2) Site Migration - Tools to back up and migrate sites."
             echo "3) UUID - Tools to manage site UUIDs."
-            echo "4) Help - Display this text."
-            echo "5) Quit - Exit menu."
+            echo "4) Global Nav - Reset the Citywide Global Nav bar if the module fails to be enabled."
+            echo "5) Help - Display this text."
+            echo "6) Quit - Exit menu."
             ;;
         "Quit")
             exit 1
